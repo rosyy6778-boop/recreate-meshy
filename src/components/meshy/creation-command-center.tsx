@@ -2,14 +2,16 @@
 
 import Image from "next/image";
 import {
-  AlertTriangle, Bot, Box, Check, CheckCircle2, ChevronDown, CircleHelp,
-  Coins, ImagePlus, Layers3, Paperclip, Puzzle, ShieldCheck,
+  AlertTriangle, ArrowRight, Bot, Box, Check, CheckCircle2, ChevronDown, CircleHelp,
+  Coins, FolderPlus, ImagePlus, Layers3, Paperclip, Pencil, Puzzle, ShieldCheck,
   SlidersHorizontal, Sparkles, Upload, WandSparkles, X,
 } from "lucide-react";
 import {
   useEffect, useRef, useState,
   type ChangeEvent, type FocusEvent, type ReactNode,
 } from "react";
+
+import type { ManagedProject } from "@/components/meshy/project-demo-types";
 
 type TaskMode = "asset" | "project";
 type InputMode = "reference" | "agent";
@@ -24,10 +26,17 @@ type ImageCheck = {
   readiness: ReadinessLevel;
 };
 type AgentAttachment = { id: string; name: string; preview: string; check: ImageCheck | null };
+type ProjectContext = { purpose: string; style: string; specification: string; output: string };
 
-const projectStages = [
-  "理清概念", "确定风格与参考", "拆分资产清单", "安排生成顺序",
-  "制作与版本筛选", "贴图、PBR 与骨骼绑定", "质量检查与导出",
+const defaultProjectContext: ProjectContext = {
+  purpose: "游戏资产",
+  style: "Cyberpunk / Semi-realistic",
+  specification: "Medium Poly · PBR",
+  output: "Unreal",
+};
+
+const cyberpunkAssetPlan = [
+  ["主角色", "1"], ["主武器", "1"], ["副武器", "1"], ["场景道具", "2"], ["配套侦察机器人", "1"],
 ] as const;
 
 const assetToolGroups: AgentToolGroup[] = [
@@ -64,7 +73,7 @@ const projectTemplates: AgentTool[] = [
 ];
 
 const assetSuggestions = ["适合游戏的机械角色", "做成 Low Poly 展示模型"] as const;
-const projectSuggestions = ["一套游戏角色和道具", "产品系列概念验证"] as const;
+const projectSuggestions = ["制作一套赛博朋克游戏角色和道具", "产品系列概念验证"] as const;
 
 const modeCopy: Record<`${TaskMode}-${InputMode}`, ModeCopy> = {
   "asset-reference": { eyebrow: "图生 3D", title: "上传图片，生成单个 3D 资产", description: "拖入主体清晰的图片，或点击选择文件。" },
@@ -162,7 +171,7 @@ function ReadinessBadge({ check }: { check: ImageCheck | null }) {
   return <span className={`flex items-center gap-1 text-[11px] font-medium ${color}`}>{check.readiness === "ready" ? <ShieldCheck className="size-3" /> : <AlertTriangle className="size-3" />}{copy}</span>;
 }
 
-export function CreationCommandCenter() {
+export function CreationCommandCenter({ onProjectCreated }: { onProjectCreated?: (project: ManagedProject) => void }) {
   const [taskMode, setTaskMode] = useState<TaskMode>("asset");
   const [inputMode, setInputMode] = useState<InputMode>("reference");
   const [detailLevel, setDetailLevel] = useState<DetailLevel>("standard");
@@ -176,6 +185,11 @@ export function CreationCommandCenter() {
   const [attachments, setAttachments] = useState<AgentAttachment[]>([]);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [selectedTool, setSelectedTool] = useState<string | null>(null);
+  const [projectContext, setProjectContext] = useState<ProjectContext>(defaultProjectContext);
+  const [contextEditing, setContextEditing] = useState(false);
+  const [costAdviceOpen, setCostAdviceOpen] = useState(false);
+  const [costOptimized, setCostOptimized] = useState(false);
+  const [projectCreated, setProjectCreated] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const agentFileInputRef = useRef<HTMLInputElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
@@ -200,8 +214,16 @@ export function CreationCommandCenter() {
     return () => { window.removeEventListener("keydown", onKey); window.removeEventListener("pointerdown", onPointer); };
   }, [detailOpen, toolsOpen]);
 
-  function changeTaskMode(mode: TaskMode) { setTaskMode(mode); setInputMode("reference"); setPlanGenerated(false); setFeedback(null); }
-  function changeInputMode(mode: InputMode) { setInputMode(mode); setPlanGenerated(false); setFeedback(null); }
+  function resetProjectPlan() {
+    setPlanGenerated(false);
+    setContextEditing(false);
+    setCostAdviceOpen(false);
+    setCostOptimized(false);
+    setProjectCreated(false);
+  }
+
+  function changeTaskMode(mode: TaskMode) { setTaskMode(mode); setInputMode("reference"); resetProjectPlan(); setFeedback(null); }
+  function changeInputMode(mode: InputMode) { setInputMode(mode); resetProjectPlan(); setFeedback(null); }
 
   async function handleReferenceFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -233,20 +255,49 @@ export function CreationCommandCenter() {
   function generate() {
     if (!isAgent && !uploadedFile) { setFeedback("请先上传参考图，系统会在消耗积分前检查图片可用性。"); return; }
     if (!isAgent && imageCheck?.readiness === "replace" && !riskConfirmed) { setFeedback("当前图片风险较高，请更换图片或确认了解风险后再继续。"); return; }
-    if (isProjectAgent && !planGenerated) { setPlanGenerated(true); setFeedback(null); return; }
-    if (isProjectAgent) { setFeedback("项目规划已确认：将创建 7 个可跟踪任务，具体生成前再确认积分。"); return; }
+    if (isProjectAgent && !planGenerated) { setPlanGenerated(true); setFeedback(null); setProjectCreated(false); return; }
     setFeedback(`已接收：${taskMode === "asset" ? "单个资产" : "创建项目"} · ${isAgent ? agentPrompt.trim() || "待补充创作目标" : uploadedFile}`);
+  }
+
+  function createProject() {
+    const project: ManagedProject = {
+      id: "cyberpunk-game-assets",
+      title: "Cyberpunk Game Assets",
+      meta: "刚刚创建",
+      completed: 0,
+      total: 6,
+      nextStep: "开始制作主角色 →",
+      statusText: "项目已创建 · 等待开始第一个资产",
+      contextTags: ["Cyberpunk", "Game Asset", "PBR", "Medium Poly", "Unreal"],
+      contextNote: "Project Context 已保存；本项目中的新资产将默认沿用当前风格与交付规格。",
+      assets: [
+        { id: "cyber-hero", title: "主角色", status: "next", image: "/images/meshy-gallery/stylized-character.jpg", note: "下一步：确认角色轮廓" },
+        { id: "primary-weapon", title: "主武器", status: "waiting", image: "/images/meshy-gallery/community/verdant-amethyst-axe.webp", note: "继承项目风格与 PBR 规格" },
+        { id: "secondary-weapon", title: "副武器", status: "waiting", image: "/images/meshy-gallery/dark-fantasy.jpg", note: "等待主角色比例确认" },
+        { id: "scene-props", title: "场景道具 ×2", status: "waiting", image: "/images/meshy-gallery/community/mechanical-carnival-gate.webp", note: "Medium Poly · Unreal" },
+        { id: "scout-robot", title: "侦察机器人", status: "waiting", image: "/images/meshy-gallery/robot-danigmos.jpg", note: "等待角色风格锁定" },
+      ],
+    };
+    setProjectCreated(true);
+    onProjectCreated?.(project);
   }
 
   const inputChoices = taskMode === "asset"
     ? [["reference", "图生 3D", ImagePlus], ["agent", "智能助理", Bot]] as const
     : [["reference", "参考图开始", ImagePlus], ["agent", "智能规划", Bot]] as const;
   const needsRiskConfirm = !isAgent && imageCheck?.readiness === "replace" && !riskConfirmed;
-  const actionLabel = needsRiskConfirm ? "先确认图片风险" : isAgent ? (isProjectAgent ? (planGenerated ? "创建 7 个任务" : "生成项目规划") : "启动智能助理") : taskMode === "asset" ? "生成资产" : "创建项目";
+  const actionLabel = needsRiskConfirm ? "先确认图片风险" : isAgent ? (isProjectAgent ? "生成项目规划" : "启动智能助理") : taskMode === "asset" ? "生成资产" : "创建项目";
   const visibleToolGroups = isProjectAgent ? [{ title: "项目模板", items: projectTemplates }] : assetToolGroups;
   const selectedToolCopy = visibleToolGroups.flatMap((group) => group.items).find((item) => item.id === selectedTool);
   const toolButtonLabel = selectedToolCopy?.label ?? (isProjectAgent ? "项目模板" : "技能");
   const contextSuggestions = isProjectAgent ? projectSuggestions : assetSuggestions;
+  const estimatedCredits = taskMode === "asset"
+    ? inputMode === "reference"
+      ? detailLevel === "standard" ? "20" : "30"
+      : detailLevel === "standard" ? "25–35" : "40–55"
+    : inputMode === "reference"
+      ? "160–220"
+      : costOptimized ? "145–180" : "180–230";
 
   return (
     <section className="mx-auto w-full max-w-[700px] pb-4 pt-5 text-white" aria-labelledby="creation-command-title">
@@ -262,12 +313,42 @@ export function CreationCommandCenter() {
         <nav className="absolute right-[calc(100%+12px)] top-0 w-[124px] py-1" aria-label="输入方式"><div className="space-y-2">{inputChoices.map(([mode, label, Icon]) => <button key={mode} type="button" aria-pressed={inputMode === mode} className={`mesh-focus-ring flex min-h-16 w-full items-start gap-2.5 rounded-xl border px-3 py-3 text-left text-xs font-medium leading-5 shadow-[0_10px_28px_rgba(0,0,0,0.18)] backdrop-blur-xl transition ${inputMode === mode ? "border-[#a9ff55]/38 bg-[#a9ff55]/10 text-[#d7ffb5]" : "border-white/[0.06] bg-[#0b0f0c]/52 text-white/48 hover:text-white/76"}`} onClick={() => changeInputMode(mode)}><Icon className="mt-0.5 size-4 shrink-0" />{label}</button>)}</div></nav>
 
         {isAgent ? (
-          <div className={`relative flex min-w-0 flex-col rounded-[20px] border border-[#7899ff]/20 bg-[linear-gradient(145deg,rgba(82,127,255,0.07),rgba(169,255,85,0.03))] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.32)] backdrop-blur-xl ${isProjectAgent && planGenerated ? "min-h-[270px]" : "min-h-[200px]"}`}>
+          <div className="relative flex min-h-[200px] min-w-0 flex-col rounded-[20px] border border-[#7899ff]/20 bg-[linear-gradient(145deg,rgba(82,127,255,0.07),rgba(169,255,85,0.03))] p-4 shadow-[0_18px_55px_rgba(0,0,0,0.32)] backdrop-blur-xl">
             <div className="flex items-center gap-2.5"><span className="grid size-9 place-items-center rounded-xl border border-[#7899ff]/20 bg-[#668cff]/10 text-[#9bb2ff]"><Bot className="size-[18px]" /></span><span className="text-xs font-semibold tracking-[0.08em] text-[#a8bbff]/72">{copy.eyebrow}</span><span className="ml-auto"><HelpPopover label="查看图片上传建议" title="添加图片有什么帮助？">可选上传同一主体的多视图图片，帮助智能助理理解造型并提高模型精准度。系统只检查已上传图片的清晰度、尺寸和画幅是否可用，不要求凑齐固定视角。</HelpPopover></span></div>
             {isProjectAgent && planGenerated ? (
               <div className="mt-3 flex flex-1 flex-col rounded-xl border border-white/[0.08] bg-black/22 p-3.5">
-                <div className="flex items-start justify-between gap-3"><div><p className="text-[11px] font-semibold tracking-[0.1em] text-[#baff83]/68">项目计划预览</p><p className="mt-1.5 text-sm font-medium text-white/82">{agentPrompt.trim() || "从一个模糊的 3D 创作概念开始"}</p><p className="mt-1 text-[11px] text-white/38">确认前不会开始生成，也不会消耗积分。</p></div><button type="button" className="mesh-focus-ring rounded-full border border-white/10 px-3 py-2 text-[11px] text-white/48" onClick={() => setPlanGenerated(false)}>继续补充</button></div>
-                <ol className="mt-3 grid grid-cols-2 gap-2">{projectStages.map((stage, index) => <li key={stage} className="flex items-center gap-2 rounded-lg bg-white/[0.035] px-3 py-2 text-[11px] text-white/58"><span className={`grid size-5 shrink-0 place-items-center rounded-full text-[9px] ${index === 0 ? "bg-[#a9ff55] font-semibold text-black" : "bg-white/[0.07] text-white/42"}`}>{index + 1}</span>{stage}</li>)}</ol>
+                <div className="flex items-start justify-between gap-3">
+                  <div><p className="text-[11px] font-semibold tracking-[0.1em] text-[#baff83]/68">项目规划</p><h2 className="mt-1.5 text-lg font-semibold text-white/90">Cyberpunk Game Assets</h2><p className="mt-1 text-[11px] text-white/38">预计 6 个资产 · Agent 已将目标拆成可逐步执行的任务</p></div>
+                  <button type="button" className="mesh-focus-ring rounded-full border border-white/10 px-3 py-2 text-[11px] text-white/48 hover:text-white/72" onClick={() => { setPlanGenerated(false); setProjectCreated(false); }}>继续补充</button>
+                </div>
+
+                <section className="mt-3 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3" aria-labelledby="project-context-title">
+                  <div className="flex items-center justify-between gap-3"><div><h3 id="project-context-title" className="text-xs font-semibold text-white/78">项目上下文 <span className="font-normal text-white/32">/ Project Context</span></h3><p className="mt-1 text-[10px] text-white/32">后续新增资产将默认继承当前项目的风格与交付约束</p></div><button type="button" aria-expanded={contextEditing} className="mesh-focus-ring flex items-center gap-1 rounded-full border border-white/[0.08] px-2.5 py-1.5 text-[10px] text-white/45 hover:text-white/72" onClick={() => setContextEditing((value) => !value)}><Pencil className="size-3" />{contextEditing ? "完成" : "调整"}</button></div>
+                  {contextEditing ? (
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      {([['purpose', '用途'], ['style', '风格'], ['specification', '资产规格'], ['output', '输出目标']] as const).map(([key, label]) => <label key={key} className="rounded-lg border border-white/[0.06] bg-black/20 px-2.5 py-2"><span className="block text-[9px] text-white/28">{label}</span><input value={projectContext[key]} className="mt-1 w-full bg-transparent text-[11px] text-white/72 outline-none" onChange={(event) => setProjectContext((current) => ({ ...current, [key]: event.target.value }))} /></label>)}
+                    </div>
+                  ) : (
+                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">{[["用途", projectContext.purpose], ["风格", projectContext.style], ["资产规格", projectContext.specification], ["输出目标", projectContext.output], ["参考图片", attachments.length ? `${attachments.length} 张参考图` : "暂未添加"]].map(([label, value]) => <div key={label} className="flex min-w-0 items-center gap-2"><dt className="shrink-0 text-white/30">{label}</dt><dd className="truncate font-medium text-white/66">{value}</dd></div>)}</dl>
+                  )}
+                </section>
+
+                <div className="mt-3 grid grid-cols-[1fr_0.9fr] gap-3">
+                  <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3" aria-labelledby="assets-plan-title"><h3 id="assets-plan-title" className="text-xs font-semibold text-white/76">Assets Plan <span className="font-normal text-white/30">· 6 个资产</span></h3><ul className="mt-2 grid grid-cols-2 gap-1.5">{cyberpunkAssetPlan.map(([name, count]) => <li key={name} className="flex items-center justify-between rounded-lg bg-black/18 px-2.5 py-2 text-[11px] text-white/56"><span>{name}</span><span className="text-white/30">×{count}</span></li>)}</ul></section>
+                  <section className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3" aria-labelledby="workflow-plan-title"><h3 id="workflow-plan-title" className="text-xs font-semibold text-white/76">预计生产流程</h3><div className="mt-3 flex flex-wrap items-center gap-1.5 text-[10px] text-white/48">{["Base Model", "Texture", "Rig / Optimize", "Final Check"].map((stage, index) => <span key={stage} className="contents"><span className="rounded-lg border border-white/[0.06] bg-black/18 px-2 py-1.5">{stage}</span>{index < 3 ? <ArrowRight className="size-3 text-[#a9ff55]/35" /> : null}</span>)}</div><p className="mt-3 text-[10px] leading-4 text-white/30">项目将保存规划与上下文，不会在创建时直接生成模型。</p></section>
+                </div>
+
+                <section className="mt-3 rounded-xl border border-[#a9ff55]/14 bg-[#a9ff55]/[0.035] p-3" aria-labelledby="credits-title">
+                  <div className="flex items-start justify-between gap-3"><div><h3 id="credits-title" className="flex items-center gap-1.5 text-xs font-semibold text-white/78"><Coins className="size-3.5 text-[#baff83]/68" />预计积分消耗</h3><p className="mt-1 text-[10px] text-white/30">基于当前项目规划估算，实际积分将在每个任务执行前再次确认。</p></div><button type="button" aria-expanded={costAdviceOpen} className="mesh-focus-ring rounded-full border border-white/[0.09] px-3 py-1.5 text-[10px] text-white/48 hover:text-white/72" onClick={() => setCostAdviceOpen((value) => !value)}>降低预计成本</button></div>
+                  <div className="mt-3 grid grid-cols-3 gap-2">{[["基础模型生成", "约 120 credits"], ["材质与贴图", "约 40–70 credits"], ["绑定 / 后处理", "约 20–40 credits"]].map(([label, value]) => <div key={label} className="rounded-lg border border-white/[0.06] bg-black/18 p-2.5"><p className="text-[10px] text-white/32">{label}</p><p className="mt-1 text-[11px] font-medium text-white/68">{value}</p></div>)}</div>
+                  <div className="mt-3 flex items-end justify-between border-t border-white/[0.06] pt-3"><div><p className="text-[10px] text-white/32">预计总消耗</p><p className="mt-0.5 text-base font-semibold text-[#cbff9b]">{costOptimized ? "145–180" : "180–230"} credits</p>{costOptimized ? <p className="mt-1 text-[10px] text-[#baff83]/52">已应用 Agent 的成本优化建议</p> : null}</div>{costAdviceOpen && !costOptimized ? <button type="button" className="mesh-focus-ring rounded-lg bg-white px-3 py-2 text-[10px] font-semibold text-black" onClick={() => { setCostOptimized(true); setCostAdviceOpen(false); }}>应用建议</button> : null}</div>
+                  {costAdviceOpen && !costOptimized ? <div className="mt-3 rounded-lg border border-white/[0.06] bg-black/18 p-3 text-[10px] leading-5 text-white/46"><p className="font-medium text-white/64">为了降低预计积分，可以：</p><p>3 个探索阶段资产先使用标准模式 · 次要道具暂不生成高细节版本 · 绑定与部分后处理延后执行</p><p className="mt-1 text-white/30">原预计 180–230 credits，调整后 145–180 credits</p></div> : null}
+                </section>
+
+                <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.06] pt-3">
+                  {projectCreated ? <p className="flex items-center gap-2 text-xs font-medium text-[#c8ff98]/76" role="status"><CheckCircle2 className="size-4" />项目已创建，Project Context 已保存</p> : <p className="flex items-center gap-1.5 text-[10px] text-white/34"><ShieldCheck className="size-3.5 text-[#a9ff55]/50" />确认前不会开始生成，也不会消耗积分</p>}
+                  <button type="button" disabled={projectCreated} className="mesh-focus-ring flex h-10 min-w-[150px] items-center justify-center gap-2 rounded-xl bg-[#a9ff55] px-4 text-xs font-semibold text-[#102008] transition hover:-translate-y-0.5 disabled:cursor-default disabled:bg-white/10 disabled:text-white/35 disabled:hover:translate-y-0" onClick={createProject}>{projectCreated ? <Check className="size-4" /> : <FolderPlus className="size-4" />}{projectCreated ? "已创建" : "创建项目"}</button>
+                </div>
               </div>
             ) : (
               <>
@@ -281,9 +362,10 @@ export function CreationCommandCenter() {
                     <button type="button" aria-expanded={toolsOpen} className={`mesh-focus-ring flex max-w-[170px] items-center gap-1.5 rounded-full border px-3 py-2 text-xs transition ${toolsOpen || selectedTool ? "border-[#a9ff55]/28 bg-[#a9ff55]/8 text-[#d2ffa9]" : "border-white/[0.09] text-white/52 hover:text-white/82"}`} onClick={() => setToolsOpen((value) => !value)}><Puzzle className="size-3.5 shrink-0" /><span className="truncate">{toolButtonLabel}</span></button>
                     <div className="ml-auto flex min-w-0 items-center gap-1.5">
                       <WandSparkles className="size-3.5 shrink-0 text-[#baff83]/55" />
-                      {contextSuggestions.map((idea) => <button key={idea} type="button" className="mesh-focus-ring rounded-full border border-white/[0.08] px-3 py-1.5 text-[11px] text-white/42 hover:text-white/70" onClick={() => { setAgentPrompt(idea); setPlanGenerated(false); }}>{idea}</button>)}
+                      {contextSuggestions.map((idea) => <button key={idea} type="button" className="mesh-focus-ring rounded-full border border-white/[0.08] px-3 py-1.5 text-[11px] text-white/42 hover:text-white/70" onClick={() => { setAgentPrompt(idea); resetProjectPlan(); setFeedback(null); }}>{idea}</button>)}
                     </div>
                   </div>
+                  {isProjectAgent ? <p className="mt-2 text-right text-[10px] text-white/28">点击试试右下角的两个示例并生成项目规划吧</p> : null}
                   {toolsOpen ? <div className="mt-2 w-full rounded-2xl border border-white/10 bg-[#0b0e0c]/88 p-3 shadow-[0_18px_48px_rgba(0,0,0,0.45)]"><p className="px-1 text-sm font-semibold text-white/86">{isProjectAgent ? "选择项目模板" : "调用技能"}</p><p className="mt-1 px-1 text-[11px] text-white/38">{isProjectAgent ? "模板只辅助补全规划提示，确认前不会生成或消耗积分。" : "选择一个能力，智能助理会把它加入当前任务。"}</p><div className="mt-3 space-y-3">{visibleToolGroups.map((group) => <div key={group.title}><p className="px-1 pb-1.5 text-[11px] font-semibold tracking-[0.12em] text-[#a9ff55]/52">{group.title}</p><div className="grid grid-cols-2 gap-1.5">{group.items.map((item) => <button key={item.id} type="button" className={`mesh-focus-ring rounded-xl border px-3 py-2 text-left transition ${selectedTool === item.id ? "border-[#a9ff55]/35 bg-[#a9ff55]/9" : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05]"}`} onClick={() => { setSelectedTool(item.id); if (isProjectAgent) setAgentPrompt(item.label); setPlanGenerated(false); setToolsOpen(false); }}><span className="block text-xs leading-5"><strong className="font-medium text-white/78">{item.label}</strong><span className="text-white/38"> — {item.description}</span></span></button>)}</div></div>)}</div></div> : null}
                 </div>
               </>
@@ -302,14 +384,14 @@ export function CreationCommandCenter() {
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-end gap-2.5">
+      <div className={`mt-3 items-center justify-end gap-2.5 ${isProjectAgent && planGenerated ? "hidden" : "flex"}`}>
         {feedback ? <p className="mr-auto flex min-w-0 items-center gap-1.5 text-xs text-[#c8ff98]/72" role="status"><Check className="size-3.5 shrink-0" /><span className="truncate">{feedback}</span></p> : null}
         {taskMode === "project" && !feedback ? <p className="mr-auto flex items-center gap-1.5 text-[11px] text-white/36"><ShieldCheck className="size-3.5 text-[#a9ff55]/50" />每个任务生成前单独确认细节等级与积分</p> : null}
         {taskMode === "asset" ? <div ref={detailRef} className="relative" onPointerDown={(event) => event.stopPropagation()}>
           <button type="button" className="mesh-focus-ring flex h-11 min-w-[150px] items-center justify-between gap-2 rounded-xl border border-white/[0.08] bg-[#101512]/88 px-3.5 text-left" aria-expanded={detailOpen} onClick={() => setDetailOpen((value) => !value)}><span className="flex items-center gap-2"><SlidersHorizontal className="size-4 text-white/38" /><span><span className="block text-[10px] text-white/30">细节等级</span><span className="block text-xs font-medium text-white/76">{detailLevel === "standard" ? "标准模式" : "高细节模式"}</span></span></span><ChevronDown className={`size-3.5 text-white/32 ${detailOpen ? "rotate-180" : ""}`} /></button>
           {detailOpen ? <div className="absolute right-0 top-[calc(100%+10px)] z-[60] w-[540px] rounded-[18px] border border-white/12 bg-[#0b0e0c]/98 p-3.5 shadow-[0_28px_90px_rgba(0,0,0,0.82)] backdrop-blur-2xl" role="dialog" aria-label="比较细节模式"><div className="mb-3 flex justify-between px-1"><div><p className="text-sm font-semibold">哪种模式适合我？</p><p className="mt-1 text-xs text-white/42">试想法选标准，确认方向后再使用高细节。</p></div><button type="button" aria-label="关闭模式比较" className="mesh-focus-ring grid size-7 place-items-center rounded-full text-white/35" onClick={() => setDetailOpen(false)}><X className="size-3.5" /></button></div><div className="grid grid-cols-2 gap-3">{detailOptions.map((option) => <button key={option.id} type="button" aria-pressed={detailLevel === option.id} className={`mesh-focus-ring group overflow-hidden rounded-2xl border text-left ${detailLevel === option.id ? "border-[#a9ff55]/52 bg-[#a9ff55]/[0.06]" : "border-white/[0.08] bg-white/[0.02]"}`} onClick={() => { setDetailLevel(option.id); setDetailOpen(false); }}><span className="relative block h-[88px] overflow-hidden border-b border-white/[0.06] bg-[#070907]"><Image fill src={option.image} alt={option.imageAlt} sizes="260px" className="object-contain p-2" /><span className="absolute left-2 top-2 rounded-full bg-black/64 px-2 py-1 text-[10px]">{option.badge}</span>{detailLevel === option.id ? <span className="absolute right-2 top-2 grid size-6 place-items-center rounded-full bg-[#a9ff55] text-black"><Check className="size-3.5" /></span> : null}</span><span className="block p-3"><span className="flex justify-between"><strong className="text-sm">{option.label}</strong><span className="rounded-full bg-white/[0.05] px-2 py-1 text-[10px] text-white/48">{option.speed}</span></span><span className="mt-1.5 block text-[11px] leading-5 text-white/48">{option.summary}</span><span className="mt-2 block space-y-1 border-t border-white/[0.06] pt-2 text-[11px] leading-5 text-white/52"><span className="block"><b className="text-white/72">适合：</b>{option.audience}</span><span className="block"><b className="text-white/72">几何：</b>{option.geometry}</span><span className="block"><b className="text-white/72">贴图：</b>{option.material}</span><span className="block text-[#baff84]/65">{option.cost}</span></span></span></button>)}</div></div> : null}
         </div> : null}
-        <button type="button" className="mesh-focus-ring flex h-11 min-w-[160px] items-center justify-center gap-2 rounded-xl bg-[#a9ff55] px-4 text-xs font-semibold text-[#102008] shadow-[0_0_28px_rgba(169,255,85,0.14)] transition hover:-translate-y-0.5" onClick={generate}>{feedback ? <Check className="size-4" /> : <Sparkles className="size-4" />}<span>{feedback ? "已接收" : actionLabel}</span>{!isAgent && taskMode === "asset" && !feedback ? <span className="flex items-center gap-1 border-l border-black/15 pl-2 text-[10px] font-medium text-black/60"><Coins className="size-3" />预计 20</span> : null}</button>
+        <button type="button" className="mesh-focus-ring flex h-11 min-w-[160px] items-center justify-center gap-2 rounded-xl bg-[#a9ff55] px-4 text-xs font-semibold text-[#102008] shadow-[0_0_28px_rgba(169,255,85,0.14)] transition hover:-translate-y-0.5" onClick={generate}>{feedback ? <Check className="size-4" /> : <Sparkles className="size-4" />}<span>{feedback ? "已接收" : actionLabel}</span>{!feedback ? <span className="flex items-center gap-1 border-l border-black/15 pl-2 text-[10px] font-medium text-black/60"><Coins className="size-3" />预计 {estimatedCredits}</span> : null}</button>
       </div>
     </section>
   );

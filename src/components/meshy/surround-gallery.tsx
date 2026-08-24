@@ -22,6 +22,7 @@ import {
   ModelCapabilityVisual,
   type CapabilityMode,
 } from "@/components/meshy/model-capability-visual";
+import type { ManagedProject } from "@/components/meshy/project-demo-types";
 
 type Persona = "returning" | "new";
 type WorkflowGroup = "attention" | "continue" | "optimize";
@@ -49,24 +50,6 @@ type WorkflowItem = {
   action: string;
   image: string;
   group: WorkflowGroup;
-};
-
-type ProjectAsset = {
-  id: string;
-  title: string;
-  status: "completed" | "next" | "waiting";
-  image: string;
-  note: string;
-};
-
-type ManagedProject = {
-  id: string;
-  title: string;
-  meta: string;
-  completed: number;
-  total: number;
-  nextStep: string;
-  assets: ProjectAsset[];
 };
 
 type GalleryAsset = {
@@ -325,23 +308,25 @@ function ProjectCard({ project, open, onToggle }: { project: ManagedProject; ope
       <button type="button" aria-expanded={open} className="mesh-focus-ring flex w-full items-center gap-4 px-4 py-3.5 text-left transition hover:bg-white/[0.025]" onClick={onToggle}>
         <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-[#a9ff55]/18 bg-[#a9ff55]/8 text-[#c9ff97]"><FolderKanban className="size-5" /></span>
         <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-3"><strong className="truncate text-sm font-semibold text-white/88">{project.title}</strong><span className="text-[11px] text-white/32">{project.meta}</span></span>
+          <span className="flex items-center gap-3"><strong className="truncate text-sm font-semibold text-white/88">{project.title}</strong><span className="text-[11px] text-white/32">{project.meta}</span>{project.statusText ? <span className="text-[11px] text-[#c8ff96]/58">{project.statusText}</span> : null}</span>
           <span className="mt-2 flex items-center gap-3"><progress className="h-1.5 w-40 accent-[#a9ff55]" value={project.completed} max={project.total} aria-label={`${project.title}完成进度`} /><span className="text-[11px] tabular-nums text-white/42">{project.completed} / {project.total} 个模型</span><span className="text-xs font-medium text-[#c8ff96]/70">{project.nextStep}</span></span>
+          {project.contextTags ? <span className="mt-2 flex flex-wrap gap-1.5">{project.contextTags.map((tag) => <span key={tag} className="rounded-full border border-white/[0.07] bg-white/[0.035] px-2 py-0.5 text-[10px] text-white/42">{tag}</span>)}</span> : null}
         </span>
         <span className="flex -space-x-2">{project.assets.slice(0, 3).map((asset) => <span key={asset.id} className="relative size-9 overflow-hidden rounded-lg border-2 border-[#0a0e0b] bg-black/35"><Image fill src={asset.image} alt="" sizes="36px" className="object-contain p-1" /></span>)}</span>
         <ChevronDown className={`size-4 text-white/35 transition ${open ? "rotate-180" : ""}`} />
       </button>
-      {open ? <div className="grid grid-cols-4 gap-2 border-t border-white/[0.06] p-3">{project.assets.map((asset) => <button key={asset.id} type="button" className="mesh-focus-ring flex min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.018] p-2.5 text-left hover:border-[#a9ff55]/20"><span className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-black/28"><Image fill src={asset.image} alt="" sizes="48px" className="object-contain p-1" /></span><span className="min-w-0"><strong className="block truncate text-xs font-medium text-white/78">{asset.title}</strong><span className="mt-1 block truncate text-[11px] text-white/38">{asset.note}</span><span className={`mt-1.5 block text-[10px] ${asset.status === "completed" ? "text-[#a9ff55]/62" : asset.status === "next" ? "text-[#ffc77b]/68" : "text-white/32"}`}>{asset.status === "completed" ? "已完成" : asset.status === "next" ? "下一步" : "等待中"}</span></span></button>)}</div> : null}
+      {open ? <div className="border-t border-white/[0.06] p-3">{project.contextNote ? <p className="mb-3 flex items-center gap-2 rounded-lg border border-[#a9ff55]/12 bg-[#a9ff55]/[0.035] px-3 py-2 text-[11px] text-[#d1ffa9]/58"><FolderKanban className="size-3.5" />{project.contextNote}</p> : null}<div className="grid grid-cols-4 gap-2">{project.assets.map((asset) => <button key={asset.id} type="button" className="mesh-focus-ring flex min-w-0 items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.018] p-2.5 text-left hover:border-[#a9ff55]/20"><span className="relative size-12 shrink-0 overflow-hidden rounded-lg bg-black/28"><Image fill src={asset.image} alt="" sizes="48px" className="object-contain p-1" /></span><span className="min-w-0"><strong className="block truncate text-xs font-medium text-white/78">{asset.title}</strong><span className="mt-1 block truncate text-[11px] text-white/38">{asset.note}</span><span className={`mt-1.5 block text-[10px] ${asset.status === "completed" ? "text-[#a9ff55]/62" : asset.status === "next" ? "text-[#ffc77b]/68" : "text-white/32"}`}>{asset.status === "completed" ? "已完成" : asset.status === "next" ? "下一步" : "等待中"}</span></span></button>)}</div></div> : null}
     </article>
   );
 }
 
-export function ContinueWorkBoard() {
+export function ContinueWorkBoard({ createdProject }: { createdProject?: ManagedProject | null }) {
   const [persona, setPersona] = useState<Persona>("returning");
   const [selectedId, setSelectedId] = useState(returningItems[0].id);
   const [completedOpen, setCompletedOpen] = useState(false);
-  const [openProjectId, setOpenProjectId] = useState<string | null>(activeProjects[0].id);
+  const [openProjectId, setOpenProjectId] = useState<string | null>(createdProject?.id ?? activeProjects[0].id);
   const items = persona === "returning" ? returningItems : newUserItems;
+  const visibleProjects = createdProject ? [createdProject, ...activeProjects] : activeProjects;
 
   function changePersona(nextPersona: Persona) {
     setPersona(nextPersona);
@@ -352,7 +337,7 @@ export function ContinueWorkBoard() {
   }
 
   return (
-    <section className="mx-auto mt-10 w-full max-w-[1180px] text-white" aria-labelledby="continue-work-title">
+    <section id="continue-work" className="scroll-mt-20 mx-auto mt-10 w-full max-w-[1180px] text-white" aria-labelledby="continue-work-title">
       <div className="flex items-end justify-between gap-8 border-b border-white/[0.07] pb-4">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold tracking-[0.14em] text-[#a9ff55]/62">
@@ -384,11 +369,11 @@ export function ContinueWorkBoard() {
           <div className="mb-2.5 flex items-center gap-2 px-1">
             <FolderKanban className="size-4 text-[#a9ff55]/65" aria-hidden="true" />
             <h3 id="active-projects-title" className="text-sm font-semibold text-white/76">进行中的项目</h3>
-            <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] text-white/42">{activeProjects.length}</span>
+            <span className="rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] text-white/42">{visibleProjects.length}</span>
             <p className="ml-2 text-xs text-white/32">一个项目集中管理关联模型、进度与下一步。</p>
           </div>
           <div className="space-y-2">
-            {activeProjects.map((project) => <ProjectCard key={project.id} project={project} open={openProjectId === project.id} onToggle={() => setOpenProjectId((current) => current === project.id ? null : project.id)} />)}
+            {visibleProjects.map((project) => <ProjectCard key={project.id} project={project} open={openProjectId === project.id} onToggle={() => setOpenProjectId((current) => current === project.id ? null : project.id)} />)}
           </div>
         </section>
       ) : null}

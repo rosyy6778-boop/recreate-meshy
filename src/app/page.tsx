@@ -1,11 +1,8 @@
 import { ArrowUpRight, Sparkles } from "lucide-react";
 
-import { CreationCommandCenter } from "@/components/meshy/creation-command-center";
-import {
-  CommunityGallery,
-  ContinueWorkBoard,
-} from "@/components/meshy/surround-gallery";
+import { CommunityGallery } from "@/components/meshy/surround-gallery";
 import { WorkspaceHeader } from "@/components/meshy/workspace-header";
+import { WorkspaceExperience } from "@/components/meshy/workspace-experience";
 
 export default function Home() {
   return (
@@ -18,13 +15,7 @@ export default function Home() {
           className="pointer-events-none absolute left-1/2 top-0 z-0 h-[620px] w-[980px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(119,255,137,0.12)_0%,rgba(65,130,255,0.055)_42%,transparent_72%)] blur-2xl"
         />
 
-        <div id="workspace" className="relative z-[30] mx-auto w-[720px] pt-3">
-          <CreationCommandCenter />
-        </div>
-
-        <div className="relative z-20">
-          <ContinueWorkBoard />
-        </div>
+        <WorkspaceExperience />
       </section>
 
       <CommunityGallery />
